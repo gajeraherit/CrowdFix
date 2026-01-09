@@ -1,0 +1,13 @@
+body {
+    background: #f7f7f9;
+}
+.card {
+    border: none;
+}
+.navbar-brand {
+    letter-spacing: 0.5px;
+}
+.badge {
+    font-size: 0.8rem;
+}
+
