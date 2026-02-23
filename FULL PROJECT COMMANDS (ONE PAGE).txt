@@ -1,0 +1,76 @@
+FULL PROJECT COMMANDS (ONE PAGE)
+✅ 1. Create Project Folder
+mkdir invoice-generator
+cd invoice-generator
+✅ 2. Create Backend Server
+mkdir server
+cd server
+npm init -y
+npm install express mongoose cors dotenv
+npm install --save-dev nodemon
+✅ 3. Create Backend Files
+mkdir models routes
+touch index.js
+touch models/Invoice.js
+touch routes/invoiceRoutes.js
+✅ 4. Setup Backend Script
+
+Open package.json manually and change scripts to:
+
+"scripts": {
+"start": "node index.js",
+"dev": "nodemon index.js"
+}
+✅ 5. Go Back and Create Frontend
+cd ..
+npx create-react-app client
+cd client
+npm install axios
+✅ 6. Install MongoDB (Skip if already installed)
+
+Check:
+
+mongod --version
+✅ 7. Start MongoDB
+
+Open NEW terminal:
+
+mongod
+✅ 8. Run Backend
+
+Open NEW terminal:
+
+cd invoice-generator/server
+npm run dev
+✅ 9. Run Frontend
+
+Open NEW terminal:
+
+cd invoice-generator/client
+npm start
+🎉 DONE
+
+Open browser:
+
+http://localhost:3000
+✅ PROJECT STRUCTURE
+invoice-generator
+
+server
+   models
+   routes
+   index.js
+
+client
+✅ DAILY USE COMMANDS (ONLY THESE)
+
+Whenever you want to run project:
+
+Terminal 1
+mongod
+Terminal 2
+cd server
+npm run dev
+Terminal 3
+cd client
+npm start
