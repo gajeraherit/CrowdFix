@@ -1,0 +1,684 @@
+src/components
+
+                                                                       invoicedetails.js
+
+import React, { useState, useEffect } from 'react';
+import { getInvoiceById } from '../api';
+
+function InvoiceDetail({ invoiceId, onBack }) {
+    const [invoice, setInvoice] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [message, setMessage] = useState('');
+
+    useEffect(() => {
+        if (invoiceId) {
+            fetchInvoice();
+        }
+    }, [invoiceId]);
+
+    async function fetchInvoice() {
+        setLoading(true);
+        setMessage('');
+        setInvoice(null);
+        try {
+            const result = await getInvoiceById(invoiceId);
+            setInvoice(result.data);
+        } catch (err) {
+            setMessage(`ERROR: ${err.message}`);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    if (loading) {
+        return <div><p>Loading invoice...</p></div>;
+    }
+
+    if (message) {
+        return (
+            <div>
+                <p><strong>{message}</strong></p>
+                <button type="button" id="backFromErrorBtn" onClick={onBack}>
+                    &larr; Back to List
+                </button>
+            </div>
+        );
+    }
+
+    if (!invoice) return null;
+
+    const subtotal = invoice.items.reduce((sum, item) => sum + item.total, 0);
+    const gstRate = invoice.gstRate != null ? invoice.gstRate : 0;
+    const gstAmount = invoice.gstAmount != null ? invoice.gstAmount : 0;
+    const grandTotal = invoice.grandTotal;
+
+    return (
+        <div>
+            <h2>Invoice Detail</h2>
+            <hr />
+
+            <h3>Invoice Information</h3>
+            <table border="1" cellPadding="6" cellSpacing="0">
+                <tbody>
+                    <tr>
+                        <td><strong>Invoice Number</strong></td>
+                        <td>{invoice.invoiceNumber}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Date</strong></td>
+                        <td>{invoice.date}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Customer Name</strong></td>
+                        <td>{invoice.customerName}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Customer Address</strong></td>
+                        <td>{invoice.customerAddress}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Created At</strong></td>
+                        <td>{new Date(invoice.createdAt).toLocaleString()}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <br />
+
+            <h3>Items</h3>
+            <table border="1" cellPadding="6" cellSpacing="0">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Item Name</th>
+                        <th>Quantity</th>
+                        <th>Price (₹)</th>
+                        <th>Item Total (₹)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {invoice.items.map((item, index) => (
+                        <tr key={index}>
+                            <td>{index + 1}</td>
+                            <td>{item.name}</td>
+                            <td>{item.quantity}</td>
+                            <td>₹ {item.price.toFixed(2)}</td>
+                            <td>₹ {item.total.toFixed(2)}</td>
+                        </tr>
+                    ))}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colSpan="4" align="right">Subtotal:</td>
+                        <td>₹ {subtotal.toFixed(2)}</td>
+                    </tr>
+                    <tr>
+                        <td colSpan="4" align="right">GST ({gstRate}%):</td>
+                        <td>₹ {gstAmount.toFixed(2)}</td>
+                    </tr>
+                    <tr>
+                        <td colSpan="4" align="right"><strong>Grand Total (incl. GST):</strong></td>
+                        <td><strong>₹ {grandTotal.toFixed(2)}</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            <br />
+
+            <button type="button" id="backToListBtn" onClick={onBack}>
+                &larr; Back to List
+            </button>
+        </div>
+    );
+}
+
+export default InvoiceDetail;
+
+
+                                                                               invoiceForm.js
+
+import React, { useState } from 'react';
+import { saveInvoice } from '../api';
+
+const emptyItem = { name: '', quantity: 1, price: '' };
+
+function InvoiceForm({ onInvoiceSaved }) {
+    const [invoiceNumber, setInvoiceNumber] = useState('');
+    const [date, setDate] = useState('');
+    const [customerName, setCustomerName] = useState('');
+    const [customerAddress, setCustomerAddress] = useState('');
+    const [gstRate, setGstRate] = useState(18);
+    const [items, setItems] = useState([{ ...emptyItem }]);
+    const [message, setMessage] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    function handleItemChange(index, field, value) {
+        const updated = items.map((item, i) =>
+            i === index ? { ...item, [field]: value } : item
+        );
+        setItems(updated);
+    }
+
+    function addItem() {
+        setItems([...items, { ...emptyItem }]);
+    }
+
+    function removeItem(index) {
+        if (items.length === 1) {
+            alert('An invoice must have at least one item.');
+            return;
+        }
+        setItems(items.filter((_, i) => i !== index));
+    }
+
+    function calcItemTotal(item) {
+        const qty = Number(item.quantity) || 0;
+        const price = Number(item.price) || 0;
+        return qty * price;
+    }
+
+    function calcSubtotal() {
+        return items.reduce((sum, item) => sum + calcItemTotal(item), 0);
+    }
+
+    function calcGSTAmount() {
+        return (calcSubtotal() * Number(gstRate)) / 100;
+    }
+
+    function calcGrandTotal() {
+        return calcSubtotal() + calcGSTAmount();
+    }
+
+    async function handleSubmit(e) {
+        e.preventDefault();
+        setMessage('');
+
+        if (!invoiceNumber.trim()) {
+            setMessage('ERROR: Invoice Number is required.');
+            return;
+        }
+        if (!date) {
+            setMessage('ERROR: Date is required.');
+            return;
+        }
+        if (!customerName.trim()) {
+            setMessage('ERROR: Customer Name is required.');
+            return;
+        }
+        if (!customerAddress.trim()) {
+            setMessage('ERROR: Customer Address is required.');
+            return;
+        }
+
+        for (let i = 0; i < items.length; i++) {
+            if (!items[i].name.trim()) {
+                setMessage(`ERROR: Item ${i + 1} - Name is required.`);
+                return;
+            }
+            if (!items[i].quantity || Number(items[i].quantity) < 1) {
+                setMessage(`ERROR: Item ${i + 1} - Quantity must be at least 1.`);
+                return;
+            }
+            if (items[i].price === '' || Number(items[i].price) < 0) {
+                setMessage(`ERROR: Item ${i + 1} - Price must be 0 or more.`);
+                return;
+            }
+        }
+
+        const payload = {
+            invoiceNumber,
+            date,
+            customerName,
+            customerAddress,
+            items,
+            gstRate: Number(gstRate),
+            gstAmount: calcGSTAmount(),
+            grandTotal: calcGrandTotal(),
+        };
+
+        try {
+            setLoading(true);
+            const result = await saveInvoice(payload);
+            setMessage(`SUCCESS: Invoice "${result.data.invoiceNumber}" saved successfully!`);
+
+            setInvoiceNumber('');
+            setDate('');
+            setCustomerName('');
+            setCustomerAddress('');
+            setGstRate(18);
+            setItems([{ ...emptyItem }]);
+
+            if (onInvoiceSaved) onInvoiceSaved();
+        } catch (err) {
+            setMessage(`ERROR: ${err.message}`);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    return (
+        <div>
+            <h2>Create New Invoice</h2>
+            <hr />
+
+            <form onSubmit={handleSubmit}>
+
+                <h3>Invoice Details</h3>
+
+                <table border="1" cellPadding="6" cellSpacing="0">
+                    <tbody>
+                        <tr>
+                            <td><label htmlFor="invoiceNumber">Invoice Number</label></td>
+                            <td>
+                                <input
+                                    id="invoiceNumber"
+                                    type="text"
+                                    value={invoiceNumber}
+                                    onChange={(e) => setInvoiceNumber(e.target.value)}
+                                    placeholder="e.g. INV-001"
+                                />
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><label htmlFor="date">Date</label></td>
+                            <td>
+                                <input
+                                    id="date"
+                                    type="date"
+                                    value={date}
+                                    onChange={(e) => setDate(e.target.value)}
+                                />
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><label htmlFor="customerName">Customer Name</label></td>
+                            <td>
+                                <input
+                                    id="customerName"
+                                    type="text"
+                                    value={customerName}
+                                    onChange={(e) => setCustomerName(e.target.value)}
+                                    placeholder="e.g. John Doe"
+                                />
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><label htmlFor="customerAddress">Customer Address</label></td>
+                            <td>
+                                <textarea
+                                    id="customerAddress"
+                                    value={customerAddress}
+                                    onChange={(e) => setCustomerAddress(e.target.value)}
+                                    placeholder="e.g. 123 Main St, City, State"
+                                    rows="3"
+                                    cols="30"
+                                />
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Invoice Items</h3>
+
+                <table border="1" cellPadding="6" cellSpacing="0">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Item Name</th>
+                            <th>Quantity</th>
+                            <th>Price (₹)</th>
+                            <th>Item Total (₹)</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {items.map((item, index) => (
+                            <tr key={index}>
+                                <td>{index + 1}</td>
+                                <td>
+                                    <input
+                                        id={`itemName-${index}`}
+                                        type="text"
+                                        value={item.name}
+                                        onChange={(e) => handleItemChange(index, 'name', e.target.value)}
+                                        placeholder="Item name"
+                                    />
+                                </td>
+                                <td>
+                                    <input
+                                        id={`itemQty-${index}`}
+                                        type="number"
+                                        min="1"
+                                        value={item.quantity}
+                                        onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                                        size="6"
+                                    />
+                                </td>
+                                <td>
+                                    <input
+                                        id={`itemPrice-${index}`}
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={item.price}
+                                        onChange={(e) => handleItemChange(index, 'price', e.target.value)}
+                                        placeholder="0.00"
+                                        size="10"
+                                    />
+                                </td>
+                                <td>
+                                    <strong>₹ {calcItemTotal(item).toFixed(2)}</strong>
+                                </td>
+                                <td>
+                                    <button
+                                        type="button"
+                                        id={`removeItem-${index}`}
+                                        onClick={() => removeItem(index)}
+                                    >
+                                        Remove
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+
+                    <tfoot>
+                        <tr>
+                            <td colSpan="4" align="right">Subtotal:</td>
+                            <td colSpan="2">₹ {calcSubtotal().toFixed(2)}</td>
+                        </tr>
+                        <tr>
+                            <td colSpan="3" align="right">GST Rate (%):</td>
+                            <td>
+                                <input
+                                    id="gstRate"
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="0.01"
+                                    value={gstRate}
+                                    onChange={(e) => setGstRate(e.target.value)}
+                                    size="6"
+                                />
+                            </td>
+                            <td colSpan="2">₹ {calcGSTAmount().toFixed(2)}</td>
+                        </tr>
+                        <tr>
+                            <td colSpan="4" align="right"><strong>Grand Total (incl. GST):</strong></td>
+                            <td colSpan="2"><strong>₹ {calcGrandTotal().toFixed(2)}</strong></td>
+                        </tr>
+                    </tfoot>
+                </table>
+
+                <br />
+
+                <button type="button" id="addItemBtn" onClick={addItem}>
+                    + Add Item
+                </button>
+
+                &nbsp;&nbsp;
+
+                <button type="submit" id="saveInvoiceBtn" disabled={loading}>
+                    {loading ? 'Saving...' : 'Save Invoice'}
+                </button>
+
+                <br /><br />
+
+                {message && (
+                    <p>
+                        <strong>{message}</strong>
+                    </p>
+                )}
+
+            </form>
+        </div>
+    );
+}
+
+export default InvoiceForm;
+
+
+
+                                                                                invoiceList.js
+
+
+import React, { useState, useEffect } from 'react';
+import { getAllInvoices } from '../api';
+
+function InvoiceList({ onViewInvoice }) {
+    const [invoices, setInvoices] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [message, setMessage] = useState('');
+    const [loaded, setLoaded] = useState(false);
+
+    async function fetchInvoices() {
+        setLoading(true);
+        setMessage('');
+        try {
+            const result = await getAllInvoices();
+            setInvoices(result.data);
+            setLoaded(true);
+            if (result.data.length === 0) {
+                setMessage('No invoices found. Create your first invoice!');
+            }
+        } catch (err) {
+            setMessage(`ERROR: ${err.message}`);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    useEffect(() => {
+        if (loaded) {
+            fetchInvoices();
+        }
+    }, []);
+
+    return (
+        <div>
+            <h2>All Invoices</h2>
+            <hr />
+
+            <button id="loadInvoicesBtn" type="button" onClick={fetchInvoices} disabled={loading}>
+                {loading ? 'Loading...' : 'Load / Refresh All Invoices'}
+            </button>
+
+            <br /><br />
+
+            {message && <p><strong>{message}</strong></p>}
+
+            {invoices.length > 0 && (
+                <table border="1" cellPadding="6" cellSpacing="0">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Invoice Number</th>
+                            <th>Date</th>
+                            <th>Customer Name</th>
+                            <th>Customer Address</th>
+                            <th>GST (%)</th>
+                            <th>Grand Total (₹)</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {invoices.map((invoice, index) => (
+                            <tr key={invoice._id}>
+                                <td>{index + 1}</td>
+                                <td>{invoice.invoiceNumber}</td>
+                                <td>{invoice.date}</td>
+                                <td>{invoice.customerName}</td>
+                                <td>{invoice.customerAddress}</td>
+                                <td>{invoice.gstRate != null ? invoice.gstRate : 0}%</td>
+                                <td>₹ {(invoice.grandTotal ?? 0).toFixed(2)}</td>
+                                <td>
+                                    <button
+                                        id={`viewBtn-${invoice._id}`}
+                                        type="button"
+                                        onClick={() => onViewInvoice && onViewInvoice(invoice._id)}
+                                    >
+                                        View
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            )}
+        </div>
+    );
+}
+
+export default InvoiceList;
+
+
+                                                                                                                        api.js
+ 
+
+const BASE_URL = 'http://localhost:5000/api/invoices';
+
+export async function saveInvoice(invoiceData) {
+    const response = await fetch(BASE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(invoiceData),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data.message || 'Failed to save invoice.');
+    }
+    return data;
+}
+
+export async function getAllInvoices() {
+    const response = await fetch(BASE_URL);
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch invoices.');
+    }
+    return data;
+}
+
+export async function getInvoiceById(id) {
+    const response = await fetch(`${BASE_URL}/${id}`);
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch invoice.');
+    }
+    return data;
+}
+ 
+
+                                                                                                                   app.js
+
+
+import React, { useState } from 'react';
+import InvoiceForm from './components/InvoiceForm';
+import InvoiceList from './components/InvoiceList';
+import InvoiceDetail from './components/InvoiceDetail';
+
+const VIEW_FORM = 'form';
+const VIEW_LIST = 'list';
+const VIEW_DETAIL = 'detail';
+
+function App() {
+  const [currentView, setCurrentView] = useState(VIEW_FORM);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  function handleViewInvoice(id) {
+    setSelectedInvoiceId(id);
+    setCurrentView(VIEW_DETAIL);
+  }
+
+  function handleInvoiceSaved() {
+    setRefreshKey((k) => k + 1);
+    setCurrentView(VIEW_LIST);
+  }
+
+  function handleBackToList() {
+    setCurrentView(VIEW_LIST);
+  }
+
+  return (
+    <center>
+
+      <header>
+        <h1>Invoice Generator</h1>
+        <hr />
+      </header>
+
+      <nav>
+        <button
+          id="navCreateBtn"
+          type="button"
+          onClick={() => setCurrentView(VIEW_FORM)}
+          disabled={currentView === VIEW_FORM}
+        >
+          Create Invoice
+        </button>
+
+        &nbsp;&nbsp;
+
+        <button
+          id="navListBtn"
+          type="button"
+          onClick={() => setCurrentView(VIEW_LIST)}
+          disabled={currentView === VIEW_LIST}
+        >
+          View All Invoices
+        </button>
+      </nav>
+
+      <hr />
+
+      <main>
+
+        {currentView === VIEW_FORM && (
+          <InvoiceForm onInvoiceSaved={handleInvoiceSaved} />
+        )}
+
+        {currentView === VIEW_LIST && (
+          <InvoiceList
+            key={refreshKey}
+            onViewInvoice={handleViewInvoice}
+          />
+        )}
+
+        {currentView === VIEW_DETAIL && (
+          <InvoiceDetail
+            invoiceId={selectedInvoiceId}
+            onBack={handleBackToList}
+          />
+        )}
+
+      </main>
+
+      <hr />
+      <footer>
+
+      </footer>
+
+    </center>
+  );
+}
+
+export default App;
+
+
+
+
+                                                                                                                                    index.js
+
+
+
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);

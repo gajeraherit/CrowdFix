@@ -1,0 +1,246 @@
+invoice.js
+
+const mongoose = require('mongoose');
+
+const itemSchema = new mongoose.Schema({
+    name: {
+        type: String,
+        required: true,
+        trim: true,
+    },
+    quantity: {
+        type: Number,
+        required: true,
+        min: 1,
+    },
+    price: {
+        type: Number,
+        required: true,
+        min: 0,
+    },
+    total: {
+        type: Number,
+        required: true,
+        min: 0,
+    },
+});
+
+const invoiceSchema = new mongoose.Schema(
+    {
+        invoiceNumber: {
+            type: String,
+            required: true,
+            unique: true,
+            trim: true,
+        },
+        date: {
+            type: String,
+            required: true,
+        },
+        customerName: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+        customerAddress: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+        items: {
+            type: [itemSchema],
+            validate: {
+                validator: function (arr) {
+                    return arr.length > 0;
+                },
+                message: 'An invoice must have at least one item.',
+            },
+        },
+        gstRate: {
+            type: Number,
+            default: 0,
+            min: 0,
+            max: 100,
+        },
+        gstAmount: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+        grandTotal: {
+            type: Number,
+            required: true,
+            min: 0,
+        },
+    },
+    {
+        timestamps: true,
+    }
+);
+
+module.exports = mongoose.model('Invoice', invoiceSchema);
+
+
+
+invoiceRoutes.js
+
+const express = require('express');
+const router = express.Router();
+const Invoice = require('../models/Invoice');
+
+router.post('/', async (req, res) => {
+    try {
+        const {
+            invoiceNumber,
+            date,
+            customerName,
+            customerAddress,
+            items,
+            gstRate,
+        } = req.body;
+
+        if (
+            !invoiceNumber ||
+            !date ||
+            !customerName ||
+            !customerAddress ||
+            !items ||
+            items.length === 0
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: 'All fields are required and at least one item must be added.',
+            });
+        }
+
+        const calculatedItems = items.map((item) => ({
+            name: item.name,
+            quantity: Number(item.quantity),
+            price: Number(item.price),
+            total: Number(item.quantity) * Number(item.price),
+        }));
+
+        const subtotal = calculatedItems.reduce((sum, item) => sum + item.total, 0);
+        const rate = Number(gstRate) || 0;
+        const calculatedGSTAmount = (subtotal * rate) / 100;
+        const calculatedGrandTotal = subtotal + calculatedGSTAmount;
+
+        const invoice = new Invoice({
+            invoiceNumber,
+            date,
+            customerName,
+            customerAddress,
+            items: calculatedItems,
+            gstRate: rate,
+            gstAmount: calculatedGSTAmount,
+            grandTotal: calculatedGrandTotal,
+        });
+
+        const savedInvoice = await invoice.save();
+
+        res.status(201).json({
+            success: true,
+            message: 'Invoice saved successfully.',
+            data: savedInvoice,
+        });
+    } catch (err) {
+        if (err.code === 11000) {
+            return res.status(409).json({
+                success: false,
+                message: `Invoice number "${req.body.invoiceNumber}" already exists. Please use a unique invoice number.`,
+            });
+        }
+        res.status(500).json({
+            success: false,
+            message: err.message || 'Server error while saving invoice.',
+        });
+    }
+});
+
+router.get('/', async (req, res) => {
+    try {
+        const invoices = await Invoice.find().sort({ createdAt: -1 });
+
+        res.status(200).json({
+            success: true,
+            count: invoices.length,
+            data: invoices,
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: err.message || 'Server error while fetching invoices.',
+        });
+    }
+});
+
+router.get('/:id', async (req, res) => {
+    try {
+        const invoice = await Invoice.findById(req.params.id);
+
+        if (!invoice) {
+            return res.status(404).json({
+                success: false,
+                message: 'Invoice not found.',
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: invoice,
+        });
+    } catch (err) {
+        if (err.kind === 'ObjectId') {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid invoice ID format.',
+            });
+        }
+        res.status(500).json({
+            success: false,
+            message: err.message || 'Server error while fetching invoice.',
+        });
+    }
+});
+
+module.exports = router;
+
+
+index.js
+
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+require('dotenv').config();
+
+const invoiceRoutes = require('./routes/invoiceRoutes');
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/invoicedb';
+
+app.use(cors());
+app.use(express.json());
+
+app.use('/api/invoices', invoiceRoutes);
+
+app.get('/', (req, res) => {
+    res.json({ message: 'Invoice Generator API is running.' });
+});
+
+mongoose
+    .connect(MONGO_URI)
+    .then(() => {
+        console.log('Connected to MongoDB');
+        app.listen(PORT, () => {
+            console.log(`Server running on http://localhost:${PORT}`);
+        });
+    })
+    .catch((err) => {
+        console.error('MongoDB connection failed:', err.message);
+        process.exit(1);
+    });
+
+
+
+
